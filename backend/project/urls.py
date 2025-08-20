@@ -17,8 +17,41 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
+from django.http import JsonResponse
+
+
+def homepage(request):
+    """Simple homepage showing the project is running"""
+    return JsonResponse(
+        {
+            "project": "CS Student Hub - Real-Time Tech Ecosystem Dashboard",
+            "status": "Running Successfully! 🚀",
+            "description": "A real-time web application aggregating content from GitHub, Reddit, Stack Overflow, and Hacker News",
+            "api_endpoints": {
+                "status": "/api/status/",
+                "trending": "/api/trending/",
+                "admin": "/admin/",
+            },
+            "websocket": "ws://localhost:8000/ws/dashboard/",
+            "tech_stack": [
+                "Django + Django Channels",
+                "WebSocket for real-time updates",
+                "PostgreSQL + Redis",
+                "React frontend (coming next)",
+                "Multiple API integrations",
+            ],
+            "next_steps": [
+                "Create React frontend",
+                "Integrate real APIs",
+                "Add WebSocket live updates",
+                "Deploy to AWS",
+            ],
+        }
+    )
+
 
 urlpatterns = [
+    path("", homepage, name="homepage"),
     path("admin/", admin.site.urls),
     path("api/", include("dashboard.urls")),
 ]
