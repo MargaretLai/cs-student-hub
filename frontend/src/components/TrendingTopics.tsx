@@ -1,5 +1,5 @@
 import React from "react";
-import { TrendingUp, MessageSquare } from "lucide-react";
+import { TrendingUp, Star, GitFork, ExternalLink } from "lucide-react";
 
 interface TrendingTopic {
   id: number;
@@ -8,77 +8,88 @@ interface TrendingTopic {
   trend_score: number;
   posts_count: number;
   description: string;
+  language?: string;
+  url?: string;
+  stars?: number;
 }
 
 interface TrendingTopicsProps {
-  trendingData: {
-    trending_topics: TrendingTopic[];
-  };
+  trendingData: TrendingTopic[];
+  isLoading: boolean;
 }
 
-const TrendingTopics: React.FC<TrendingTopicsProps> = ({ trendingData }) => {
-  const getTrendColor = (score: number) => {
-    if (score >= 90) return "#22c55e"; // Green
-    if (score >= 70) return "#f59e0b"; // Yellow
-    return "#ef4444"; // Red
-  };
-
-  const getPlatformColor = (platform: string) => {
-    switch (platform) {
-      case "github":
-        return "#333";
-      case "reddit":
-        return "#ff4500";
-      case "stackoverflow":
-        return "#f48024";
-      case "hackernews":
-        return "#ff6600";
-      default:
-        return "#6b7280";
-    }
-  };
+const TrendingTopics: React.FC<TrendingTopicsProps> = ({
+  trendingData,
+  isLoading,
+}) => {
+  if (isLoading) {
+    return (
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">
+            <TrendingUp className="card-icon" />
+            🔥 Trending Now
+          </div>
+        </div>
+        <div className="card-content">
+          <div className="loading">Loading trending repositories...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="dashboard-card trending-card">
+    <div className="card">
       <div className="card-header">
-        <TrendingUp className="w-6 h-6" />
-        <h3>🔥 Trending Now</h3>
+        <div className="card-title">
+          <TrendingUp className="card-icon" />
+          🔥 Trending GitHub Repos
+        </div>
+        <div className="trend-count">{trendingData.length} repos</div>
       </div>
-
-      <div className="trending-list">
-        {trendingData.trending_topics.map((topic) => (
-          <div key={topic.id} className="trending-item">
-            <div className="trending-main">
+      <div className="card-content">
+        <div className="trending-list">
+          {trendingData.slice(0, 8).map((topic, index) => (
+            <div key={topic.id} className="trending-item">
+              <div className="trending-rank">#{index + 1}</div>
               <div className="trending-info">
-                <h4 className="topic-keyword">{topic.keyword}</h4>
-                <p className="topic-description">{topic.description}</p>
-              </div>
-
-              <div className="trending-metrics">
-                <div
-                  className="trend-score"
-                  style={{ backgroundColor: getTrendColor(topic.trend_score) }}
-                >
-                  {topic.trend_score}
+                <div className="trending-header">
+                  <div className="trending-name">{topic.keyword}</div>
+                  <div className="trending-stats">
+                    <span className="stat">
+                      <Star size={12} />
+                      {topic.stars || 0}
+                    </span>
+                    <span className="stat">
+                      <GitFork size={12} />
+                      {topic.posts_count}
+                    </span>
+                  </div>
                 </div>
+                <div className="trending-meta">
+                  <span className="trending-language">
+                    {topic.language || "Unknown"}
+                  </span>
+                  <span className="trending-score">
+                    {Math.round(topic.trend_score)}
+                  </span>
+                </div>
+                <div className="trending-description">{topic.description}</div>
+                {topic.url && (
+                  <a
+                    href={topic.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="trending-link"
+                  >
+                    <ExternalLink size={12} />
+                    View on GitHub
+                  </a>
+                )}
               </div>
             </div>
-
-            <div className="trending-footer">
-              <span
-                className="platform-badge"
-                style={{ backgroundColor: getPlatformColor(topic.platform) }}
-              >
-                {topic.platform}
-              </span>
-
-              <div className="posts-count">
-                <MessageSquare className="w-4 h-4" />
-                <span>{topic.posts_count} posts</span>
-              </div>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

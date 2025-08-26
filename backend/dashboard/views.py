@@ -1,32 +1,54 @@
-"""
-Views for dashboard app
-"""
-
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework import status
-import json
+from .api_clients import github_client
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def homepage(request):
+    """
+    Homepage view with project information
+    """
+    return JsonResponse(
+        {
+            "project": "CS Student Hub",
+            "description": "Real-time tech ecosystem dashboard for CS students",
+            "version": "1.0.0",
+            "endpoints": {
+                "api_status": "/api/status/",
+                "trending": "/api/trending/",
+                "github_repos": "/api/github/repos/",
+                "github_languages": "/api/github/languages/",
+            },
+            "frontend_url": "http://localhost:3000",
+            "status": "running",
+        }
+    )
 
 
 @api_view(["GET"])
 def api_status(request):
     """
-    Check if the API is working
+    API status endpoint with GitHub API status
     """
+    github_status = github_client.get_api_status()
+
     return Response(
         {
-            "status": "success",
-            "message": "CS Student Hub API is running!",
-            "version": "1.0",
+            "status": "running",
+            "message": "CS Student Hub API is operational",
+            "version": "1.0.0",
             "features": [
-                "Real-time WebSocket updates",
-                "GitHub API integration",
-                "Reddit API integration",
-                "Stack Overflow API integration",
-                "Hacker News API integration",
+                "Real-time GitHub trending repositories",
+                "Programming language statistics",
+                "WebSocket support for live updates",
+                "Multi-platform data aggregation",
             ],
+            "github_api": github_status,
         }
     )
 
@@ -34,52 +56,146 @@ def api_status(request):
 @api_view(["GET"])
 def trending_topics(request):
     """
-    Get trending topics (mock data for now)
+    Get trending topics from GitHub repositories
     """
-    # Mock data - we'll replace this with real API data later
-    mock_data = {
-        "status": "success",
-        "last_updated": "2025-08-20T20:25:00Z",
-        "trending_topics": [
-            {
-                "id": 1,
-                "keyword": "React",
-                "platform": "github",
-                "trend_score": 95,
-                "posts_count": 156,
-                "description": "JavaScript library for building user interfaces",
-            },
-            {
-                "id": 2,
-                "keyword": "Python Django",
-                "platform": "stackoverflow",
-                "trend_score": 87,
-                "posts_count": 89,
-                "description": "Web framework questions trending",
-            },
-            {
-                "id": 3,
-                "keyword": "AI/ML Jobs",
-                "platform": "reddit",
-                "trend_score": 92,
-                "posts_count": 234,
-                "description": "Machine learning career discussions",
-            },
-            {
-                "id": 4,
-                "keyword": "TypeScript",
-                "platform": "hackernews",
-                "trend_score": 78,
-                "posts_count": 67,
-                "description": "Strongly typed JavaScript discussions",
-            },
-        ],
-        "platforms": {
-            "github": {"status": "active", "last_fetch": "2025-08-20T20:24:30Z"},
-            "reddit": {"status": "active", "last_fetch": "2025-08-20T20:24:45Z"},
-            "stackoverflow": {"status": "active", "last_fetch": "2025-08-20T20:24:15Z"},
-            "hackernews": {"status": "active", "last_fetch": "2025-08-20T20:24:50Z"},
-        },
-    }
+    try:
+        # Get trending repositories (last 7 days)
+        trending_repos = github_client.get_trending_repositories(days=7, limit=20)
 
-    return Response(mock_data)
+        # Get language statistics
+        language_stats = github_client.get_language_stats()
+
+        # Transform trending repos into trending topics format
+        trending_topics = []
+        for repo in trending_repos[:10]:  # Top 10 for trending topics
+            trending_topics.append(
+                {
+                    "id": repo["id"],
+                    "keyword": repo["name"],
+                    "platform": "GitHub",
+                    "trend_score": min(repo["stars"] / 10, 100),  # Scale stars to 0-100
+                    "posts_count": repo["forks"],
+                    "description": (
+                        repo["description"][:100] + "..."
+                        if len(repo["description"]) > 100
+                        else repo["description"]
+                    ),
+                    "language": repo["language"],
+                    "url": repo["url"],
+                    "stars": repo["stars"],
+                }
+            )
+
+        # Platform status
+        platforms = {
+            "github": {
+                "status": "connected",
+                "last_fetch": "just now",
+                "repos_count": len(trending_repos),
+                "rate_limit_remaining": github_client.get_api_status()["rate_limit"][
+                    "remaining"
+                ],
+            },
+            "reddit": {
+                "status": "pending",
+                "last_fetch": "not implemented",
+                "posts_count": 0,
+            },
+            "stackoverflow": {
+                "status": "pending",
+                "last_fetch": "not implemented",
+                "questions_count": 0,
+            },
+            "hackernews": {
+                "status": "pending",
+                "last_fetch": "not implemented",
+                "stories_count": 0,
+            },
+        }
+
+        return Response(
+            {
+                "trending_topics": trending_topics,
+                "platforms": platforms,
+                "language_stats": language_stats,
+                "total_repos_analyzed": len(trending_repos),
+                "last_updated": "just now",
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error fetching trending data: {str(e)}")
+
+        # Fallback to indicate API is working but data fetch failed
+        return Response(
+            {
+                "trending_topics": [],
+                "platforms": {
+                    "github": {
+                        "status": "error",
+                        "last_fetch": "failed",
+                        "error": str(e),
+                    }
+                },
+                "error": "Failed to fetch trending data",
+                "message": "API is running but GitHub data fetch failed",
+            }
+        )
+
+
+@api_view(["GET"])
+def github_repositories(request):
+    """
+    Get detailed GitHub trending repositories
+    """
+    try:
+        language = request.GET.get("language", "")
+        days = int(request.GET.get("days", 7))
+        limit = int(request.GET.get("limit", 30))
+
+        repos = github_client.get_trending_repositories(
+            language=language, days=days, limit=limit
+        )
+
+        return Response(
+            {
+                "repositories": repos,
+                "count": len(repos),
+                "filters": {
+                    "language": language or "all",
+                    "days": days,
+                    "limit": limit,
+                },
+                "github_api_status": github_client.get_api_status(),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error fetching GitHub repositories: {str(e)}")
+        return Response(
+            {"error": "Failed to fetch repositories", "message": str(e)}, status=500
+        )
+
+
+@api_view(["GET"])
+def github_languages(request):
+    """
+    Get programming language statistics from GitHub
+    """
+    try:
+        language_stats = github_client.get_language_stats()
+
+        return Response(
+            {
+                "language_stats": language_stats,
+                "total_languages": len(language_stats),
+                "github_api_status": github_client.get_api_status(),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error fetching language stats: {str(e)}")
+        return Response(
+            {"error": "Failed to fetch language statistics", "message": str(e)},
+            status=500,
+        )

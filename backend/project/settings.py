@@ -171,3 +171,31 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+
+# API Configuration - External APIs
+GITHUB_TOKEN = config("GITHUB_TOKEN", default="")
+REDDIT_CLIENT_ID = config("REDDIT_CLIENT_ID", default="")
+REDDIT_CLIENT_SECRET = config("REDDIT_CLIENT_SECRET", default="")
+REDDIT_USER_AGENT = config("REDDIT_USER_AGENT", default="cs-student-hub/1.0")
+
+# Logging configuration
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
+    "loggers": {
+        "dashboard": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+    },
+}
