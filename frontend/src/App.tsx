@@ -6,7 +6,7 @@ import { RefreshCw, Clock, Zap } from "lucide-react";
 function App() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [nextUpdate, setNextUpdate] = useState(30);
+  const [nextUpdate, setNextUpdate] = useState(3600); // 1 hour = 3600 seconds
 
   // Update timestamp when dashboard refreshes
   const handleDataUpdate = () => {
@@ -24,7 +24,7 @@ function App() {
       setNextUpdate((prev) => {
         if (prev <= 1) {
           handleRefreshStart();
-          return 30; // Reset to 30 seconds
+          return 3600; // Reset to 1 hour (3600 seconds)
         }
         return prev - 1;
       });
@@ -40,6 +40,20 @@ function App() {
       minute: "2-digit",
       second: "2-digit",
     });
+  };
+
+  const formatCountdown = (seconds: number) => {
+    if (seconds >= 3600) {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      return `${hours}h ${minutes}m`;
+    } else if (seconds >= 60) {
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = seconds % 60;
+      return `${minutes}m ${remainingSeconds}s`;
+    } else {
+      return `${seconds}s`;
+    }
   };
 
   return (
@@ -59,7 +73,9 @@ function App() {
           <div className="status-item">
             <RefreshCw size={16} className={isRefreshing ? "spinning" : ""} />
             <span>
-              {isRefreshing ? "Updating..." : `Next update in ${nextUpdate}s`}
+              {isRefreshing
+                ? "Updating..."
+                : `Next update in ${formatCountdown(nextUpdate)}`}
             </span>
           </div>
 
@@ -75,8 +91,8 @@ function App() {
             <span className="notice-icon">ℹ️</span>
             <div className="notice-text">
               <strong>Live Data:</strong> This dashboard automatically fetches
-              fresh GitHub data every 30 seconds. Please allow a few moments for
-              data to load on first visit.
+              fresh GitHub and Reddit data every hour. Click refresh on any card
+              to get immediate updates.
             </div>
           </div>
         </div>

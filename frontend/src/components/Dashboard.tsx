@@ -5,7 +5,7 @@ import LiveStats from "./LiveStats";
 import { Activity, Globe, AlertCircle } from "lucide-react";
 
 interface TrendingTopic {
-  id: number;
+  id: string | number;
   keyword: string;
   platform: string;
   trend_score: number;
@@ -14,6 +14,9 @@ interface TrendingTopic {
   language?: string;
   url?: string;
   stars?: number;
+  score?: number; // Reddit score
+  subreddit?: string; // Reddit subreddit
+  type?: string; // 'repository' or 'discussion'
 }
 
 interface DashboardProps {
@@ -29,6 +32,7 @@ interface PlatformStatus {
   questions_count?: number;
   stories_count?: number;
   rate_limit_remaining?: number;
+  subreddits_monitored?: number;
   error?: string;
 }
 
@@ -42,6 +46,7 @@ interface TrendingData {
   };
   language_stats?: any;
   total_repos_analyzed?: number;
+  total_posts_analyzed?: number;
   last_updated?: string;
   error?: string;
   message?: string;
@@ -52,14 +57,21 @@ interface ApiStatus {
   message: string;
   version: string;
   features: string[];
-  github_api?: {
-    status: string;
-    rate_limit: {
-      limit: number;
-      remaining: number;
-      reset_time: number;
+  apis?: {
+    github: {
+      status: string;
+      rate_limit: {
+        limit: number;
+        remaining: number;
+        reset_time: number;
+      };
+      message: string;
     };
-    message: string;
+    reddit: {
+      status: string;
+      message: string;
+      note?: string;
+    };
   };
 }
 
@@ -102,8 +114,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   useEffect(() => {
     fetchData();
 
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchData, 30000);
+    // Auto-refresh every 1 hour (3600000 milliseconds)
+    const interval = setInterval(fetchData, 3600000);
     return () => clearInterval(interval);
   }, []);
 
@@ -149,7 +161,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="card-header">
           <div className="card-title">
             <Activity className="card-icon" />
-            🔗 API Status
+            API Status
           </div>
           <div
             className={`status-indicator ${
@@ -174,7 +186,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <strong>Message:</strong> {apiStatus?.message}
                 </p>
 
-                {apiStatus?.github_api && (
+                {/* GitHub API Status */}
+                {apiStatus?.apis?.github && (
                   <div
                     style={{
                       marginTop: "1rem",
@@ -184,12 +197,33 @@ const Dashboard: React.FC<DashboardProps> = ({
                     }}
                   >
                     <p>
-                      <strong>GitHub API:</strong> {apiStatus.github_api.status}
+                      <strong>GitHub API:</strong>{" "}
+                      {apiStatus.apis.github.status}
                     </p>
                     <p>
                       <strong>Rate Limit:</strong>{" "}
-                      {apiStatus.github_api.rate_limit.remaining}/
-                      {apiStatus.github_api.rate_limit.limit}
+                      {apiStatus.apis.github.rate_limit.remaining}/
+                      {apiStatus.apis.github.rate_limit.limit}
+                    </p>
+                  </div>
+                )}
+
+                {/* Reddit API Status */}
+                {apiStatus?.apis?.reddit && (
+                  <div
+                    style={{
+                      marginTop: "1rem",
+                      padding: "1rem",
+                      background: "rgba(255,255,255,0.05)",
+                      borderRadius: "8px",
+                    }}
+                  >
+                    <p>
+                      <strong>Reddit API:</strong>{" "}
+                      {apiStatus.apis.reddit.status}
+                    </p>
+                    <p style={{ fontSize: "0.9rem", color: "#a0a0a0" }}>
+                      {apiStatus.apis.reddit.message}
                     </p>
                   </div>
                 )}
@@ -216,7 +250,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       {/* Live Stats */}
       <LiveStats data={trendingData} isLoading={isLoading} />
 
-      {/* Trending Topics - Fixed the type issue here */}
+      {/* Trending Topics - Now supports both GitHub and Reddit */}
       {trendingData && (
         <TrendingTopics
           trendingData={trendingData.trending_topics || []}
@@ -230,7 +264,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           <div className="card-header">
             <div className="card-title">
               <Globe className="card-icon" />
-              🌐 Platform Status
+              Platform Status
             </div>
           </div>
           <div className="card-content">
@@ -259,6 +293,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                         `${status.questions_count} questions`}
                       {status.stories_count &&
                         `${status.stories_count} stories`}
+                      {status.subreddits_monitored &&
+                        `${status.subreddits_monitored} subreddits`}
                     </div>
                     {status.rate_limit_remaining && (
                       <div
@@ -279,22 +315,29 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
-      {/* GitHub Statistics Summary */}
-      {trendingData?.total_repos_analyzed && (
+      {/* Updated Analytics Summary */}
+      {(trendingData?.total_repos_analyzed ||
+        trendingData?.total_posts_analyzed) && (
         <div className="card">
           <div className="card-header">
             <div className="card-title">
               <Activity className="card-icon" />
-              📊 GitHub Analytics
+              Multi-Platform Analytics
             </div>
           </div>
           <div className="card-content">
             <div className="stats-grid">
               <div className="stat-card">
                 <div className="stat-value">
-                  {trendingData.total_repos_analyzed}
+                  {trendingData.total_repos_analyzed || 0}
                 </div>
-                <div className="stat-label">Repos Analyzed</div>
+                <div className="stat-label">GitHub Repos</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-value">
+                  {trendingData.total_posts_analyzed || 0}
+                </div>
+                <div className="stat-label">Reddit Posts</div>
               </div>
               <div className="stat-card">
                 <div className="stat-value">
@@ -310,11 +353,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     ? trendingData.trending_topics.length
                     : 0}
                 </div>
-                <div className="stat-label">Trending</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">Live</div>
-                <div className="stat-label">Updates</div>
+                <div className="stat-label">Combined Feed</div>
               </div>
             </div>
 

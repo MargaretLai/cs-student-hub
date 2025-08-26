@@ -149,5 +149,219 @@ class GitHubAPIClient:
         }
 
 
-# Initialize GitHub client
+class RedditAPIClient:
+    """
+    Reddit API client for fetching trending posts from programming subreddits
+    No authentication required for public data
+    """
+
+    def __init__(self):
+        self.base_url = "https://www.reddit.com"
+        self.headers = {
+            "User-Agent": "python:cs-student-hub:v1.0.0 (by /u/csstudent)",
+            "Accept": "application/json",
+        }
+
+    def _make_request(
+        self, endpoint: str, params: Optional[Dict] = None
+    ) -> Optional[Dict]:
+        """
+        Make request to Reddit API with error handling
+        """
+        try:
+            # Ensure endpoint ends with .json
+            if not endpoint.endswith(".json"):
+                endpoint += ".json"
+
+            url = f"{self.base_url}/{endpoint.lstrip('/')}"
+
+            response = requests.get(
+                url, headers=self.headers, params=params, timeout=15
+            )
+
+            logger.info(f"Reddit API request: {url} - Status: {response.status_code}")
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(
+                    f"Reddit API error {response.status_code}: {response.text[:200]}"
+                )
+                return None
+
+        except requests.RequestException as e:
+            logger.error(f"Reddit API request failed: {str(e)}")
+            return None
+
+    def get_subreddit_posts(
+        self, subreddit: str = "programming", sort: str = "hot", limit: int = 25
+    ) -> List[Dict]:
+        """
+        Get posts from a specific subreddit
+        sort options: hot, new, top, rising
+        """
+        # Fix: construct the endpoint correctly with r/ prefix
+        endpoint = f"r/{subreddit}/{sort}"
+        params = {"limit": min(limit, 100)}  # Reddit max is 100
+
+        data = self._make_request(endpoint, params)
+        if not data or "data" not in data:
+            logger.error(f"No data received from Reddit for r/{subreddit}")
+            return []
+
+        if "children" not in data["data"]:
+            logger.error(f"No children in Reddit data for r/{subreddit}")
+            return []
+
+        posts = []
+        for item in data["data"]["children"]:
+            try:
+                post_data = item["data"]
+
+                # Skip pinned/stickied posts and ads
+                if post_data.get("stickied", False) or post_data.get(
+                    "is_sponsored", False
+                ):
+                    continue
+
+                # Skip deleted/removed posts
+                if post_data.get("removed_by_category"):
+                    continue
+
+                posts.append(
+                    {
+                        "id": post_data.get("id", ""),
+                        "title": post_data.get("title", "No title"),
+                        "author": post_data.get("author", "unknown"),
+                        "subreddit": post_data.get("subreddit", subreddit),
+                        "score": post_data.get("score", 0),
+                        "upvote_ratio": post_data.get("upvote_ratio", 0),
+                        "num_comments": post_data.get("num_comments", 0),
+                        "url": f"https://reddit.com{post_data.get('permalink', '')}",
+                        "external_url": post_data.get("url", ""),
+                        "selftext": (
+                            (post_data.get("selftext", "")[:200] + "...")
+                            if post_data.get("selftext", "")
+                            else ""
+                        ),
+                        "created_utc": post_data.get("created_utc", 0),
+                        "flair_text": post_data.get("link_flair_text", ""),
+                        "domain": post_data.get("domain", ""),
+                        "is_self": post_data.get("is_self", False),
+                    }
+                )
+
+            except Exception as e:
+                logger.warning(f"Error processing Reddit post: {str(e)}")
+                continue
+
+        logger.info(f"Successfully parsed {len(posts)} posts from r/{subreddit}")
+        return posts
+
+    def get_programming_trending(self) -> List[Dict]:
+        """
+        Get trending posts from multiple programming subreddits with better error handling
+        """
+        subreddits = [
+            "programming",
+            "webdev",
+            "Python",
+            "javascript",
+            "MachineLearning",
+            "cscareerquestions",
+            "learnprogramming",
+        ]
+
+        all_posts = []
+        successful_subreddits = []
+        failed_subreddits = []
+
+        for subreddit in subreddits:
+            try:
+                posts = self.get_subreddit_posts(subreddit, "hot", 8)
+
+                if posts:  # If we got posts successfully
+                    successful_subreddits.append(subreddit)
+                    # Add subreddit info and filter for quality posts
+                    for post in posts:
+                        if post["score"] >= 5:  # Lower threshold for more posts
+                            post["source_subreddit"] = subreddit
+                            all_posts.append(post)
+                else:
+                    failed_subreddits.append(f"{subreddit} (no posts)")
+
+            except Exception as e:
+                logger.error(f"Failed to get posts from r/{subreddit}: {str(e)}")
+                failed_subreddits.append(f"{subreddit} (error: {str(e)[:50]})")
+
+        logger.info(
+            f"Reddit trending: {len(successful_subreddits)} successful, {len(failed_subreddits)} failed"
+        )
+        logger.info(f"Successful subreddits: {successful_subreddits}")
+        if failed_subreddits:
+            logger.warning(f"Failed subreddits: {failed_subreddits}")
+
+        # Sort by score and return top posts
+        all_posts.sort(key=lambda x: x["score"], reverse=True)
+        result = all_posts[:25]
+
+        logger.info(f"Returning {len(result)} total Reddit posts")
+        return result
+
+    def get_subreddit_stats(self) -> Dict:
+        """
+        Get statistics for popular programming subreddits
+        """
+        subreddits = [
+            "programming",
+            "webdev",
+            "Python",
+            "javascript",
+            "MachineLearning",
+        ]
+        stats = {}
+
+        for subreddit in subreddits:
+            posts = self.get_subreddit_posts(subreddit, "hot", 20)
+            if posts:
+                total_score = sum(post["score"] for post in posts)
+                total_comments = sum(post["num_comments"] for post in posts)
+
+                stats[subreddit] = {
+                    "posts_count": len(posts),
+                    "total_score": total_score,
+                    "total_comments": total_comments,
+                    "avg_score": total_score // len(posts) if posts else 0,
+                    "top_post": posts[0] if posts else None,
+                }
+
+        return stats
+
+    def get_api_status(self) -> Dict:
+        """
+        Check Reddit API status with a simple test request
+        """
+        try:
+            # Test with a simple request to r/programming - pass the endpoint correctly
+            data = self._make_request("r/programming/hot", {"limit": 1})
+            if data and "data" in data:
+                return {
+                    "status": "connected",
+                    "message": "Successfully connected to Reddit API",
+                    "note": "Using public Reddit JSON feeds",
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": "Failed to fetch data from Reddit API",
+                }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Reddit API connection failed: {str(e)}",
+            }
+
+
+# Initialize API clients
 github_client = GitHubAPIClient()
+reddit_client = RedditAPIClient()

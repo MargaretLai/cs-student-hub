@@ -14,7 +14,7 @@ import {
 import { TrendingUp, Users, Code, Star } from "lucide-react";
 
 interface TrendingTopic {
-  id: number;
+  id: string | number;
   keyword: string;
   platform: string;
   trend_score: number;
@@ -23,6 +23,9 @@ interface TrendingTopic {
   language?: string;
   url?: string;
   stars?: number;
+  score?: number; // Reddit score
+  subreddit?: string; // Reddit subreddit
+  type?: string; // 'repository' or 'discussion'
 }
 
 interface PlatformStatus {
@@ -33,6 +36,7 @@ interface PlatformStatus {
   questions_count?: number;
   stories_count?: number;
   rate_limit_remaining?: number;
+  subreddits_monitored?: number;
   error?: string;
 }
 
@@ -46,6 +50,7 @@ interface TrendingData {
   };
   language_stats?: any;
   total_repos_analyzed?: number;
+  total_posts_analyzed?: number;
   last_updated?: string;
   error?: string;
   message?: string;
@@ -63,7 +68,7 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
         <div className="card-header">
           <div className="card-title">
             <TrendingUp className="card-icon" />
-            📊 Live Statistics
+            Live Statistics
           </div>
         </div>
         <div className="card-content">
@@ -79,7 +84,7 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
         <div className="card-header">
           <div className="card-title">
             <TrendingUp className="card-icon" />
-            📊 Live Statistics
+            Live Statistics
           </div>
         </div>
         <div className="card-content">
@@ -89,19 +94,40 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
     );
   }
 
-  // Prepare chart data from trending topics
-  const chartData =
-    data.trending_topics?.slice(0, 8).map((topic) => ({
-      name:
-        topic.keyword.length > 10
-          ? topic.keyword.substring(0, 10) + "..."
-          : topic.keyword,
-      stars: topic.stars || 0,
-      forks: topic.posts_count || 0,
-      score: Math.round(topic.trend_score || 0),
-    })) || [];
+  // Separate GitHub and Reddit data for different visualizations
+  const githubRepos =
+    data.trending_topics?.filter(
+      (topic) => topic.platform === "GitHub" || topic.type === "repository"
+    ) || [];
 
-  // Language distribution data
+  const redditPosts =
+    data.trending_topics?.filter(
+      (topic) => topic.platform === "Reddit" || topic.type === "discussion"
+    ) || [];
+
+  // Prepare chart data from GitHub repositories (stars vs forks)
+  const githubChartData = githubRepos.slice(0, 8).map((topic) => ({
+    name:
+      topic.keyword.length > 10
+        ? topic.keyword.substring(0, 10) + "..."
+        : topic.keyword,
+    stars: topic.stars || 0,
+    forks: topic.posts_count || 0,
+    score: Math.round(topic.trend_score || 0),
+  }));
+
+  // Prepare chart data from Reddit posts (score vs comments)
+  const redditChartData = redditPosts.slice(0, 6).map((topic) => ({
+    name:
+      topic.keyword.length > 15
+        ? topic.keyword.substring(0, 15) + "..."
+        : topic.keyword,
+    upvotes: topic.score || 0,
+    comments: topic.posts_count || 0,
+    subreddit: topic.subreddit || "programming",
+  }));
+
+  // Language distribution data from GitHub
   const languageData = data.language_stats
     ? Object.entries(data.language_stats)
         .map(([lang, stats]: [string, any]) => ({
@@ -112,8 +138,10 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
         .slice(0, 6)
     : [];
 
-  // Colors for the pie chart
-  const COLORS = [
+  // Colors for the charts
+  const GITHUB_COLORS = ["#667eea", "#00ff88"];
+  const REDDIT_COLORS = ["#ff6b6b", "#ffc107"];
+  const PIE_COLORS = [
     "#667eea",
     "#00ff88",
     "#ff6b6b",
@@ -122,22 +150,30 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
     "#9c27b0",
   ];
 
-  // Calculate total stars across all trending repos
-  const totalStars =
-    data.trending_topics?.reduce((sum, topic) => sum + (topic.stars || 0), 0) ||
-    0;
-  const totalForks =
-    data.trending_topics?.reduce(
-      (sum, topic) => sum + (topic.posts_count || 0),
-      0
-    ) || 0;
+  // Calculate totals
+  const totalStars = githubRepos.reduce(
+    (sum, topic) => sum + (topic.stars || 0),
+    0
+  );
+  const totalForks = githubRepos.reduce(
+    (sum, topic) => sum + (topic.posts_count || 0),
+    0
+  );
+  const totalUpvotes = redditPosts.reduce(
+    (sum, topic) => sum + (topic.score || 0),
+    0
+  );
+  const totalComments = redditPosts.reduce(
+    (sum, topic) => sum + (topic.posts_count || 0),
+    0
+  );
 
   return (
     <div className="card">
       <div className="card-header">
         <div className="card-title">
           <TrendingUp className="card-icon" />
-          📊 Live GitHub Statistics
+          Multi-Platform Statistics
         </div>
         <div className="trend-count">Real-time data</div>
       </div>
@@ -146,24 +182,24 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
         <div className="stats-grid" style={{ marginBottom: "2rem" }}>
           <div className="stat-card">
             <div className="stat-value">{data.total_repos_analyzed || 0}</div>
-            <div className="stat-label">Repos Analyzed</div>
+            <div className="stat-label">GitHub Repos</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value">{data.total_posts_analyzed || 0}</div>
+            <div className="stat-label">Reddit Posts</div>
           </div>
           <div className="stat-card">
             <div className="stat-value">{totalStars.toLocaleString()}</div>
             <div className="stat-label">Total Stars</div>
           </div>
           <div className="stat-card">
-            <div className="stat-value">{totalForks.toLocaleString()}</div>
-            <div className="stat-label">Total Forks</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{languageData.length}</div>
-            <div className="stat-label">Languages</div>
+            <div className="stat-value">{totalUpvotes.toLocaleString()}</div>
+            <div className="stat-label">Total Upvotes</div>
           </div>
         </div>
 
-        {/* Stars vs Forks Chart */}
-        {chartData.length > 0 && (
+        {/* GitHub: Stars vs Forks Chart */}
+        {githubChartData.length > 0 && (
           <div style={{ marginBottom: "2rem" }}>
             <h4
               style={{
@@ -176,11 +212,11 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
                 size={16}
                 style={{ marginRight: "0.5rem", color: "#667eea" }}
               />
-              Trending Repository Stats
+              GitHub Repository Stats
             </h4>
             <div className="chart-container">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
+                <BarChart data={githubChartData}>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     stroke="rgba(255,255,255,0.1)"
@@ -210,7 +246,55 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
           </div>
         )}
 
-        {/* Language Distribution */}
+        {/* Reddit: Upvotes vs Comments Chart */}
+        {redditChartData.length > 0 && (
+          <div style={{ marginBottom: "2rem" }}>
+            <h4
+              style={{
+                color: "#ffffff",
+                marginBottom: "1rem",
+                fontSize: "1.1rem",
+              }}
+            >
+              <Users
+                size={16}
+                style={{ marginRight: "0.5rem", color: "#ff6b6b" }}
+              />
+              Reddit Discussion Stats
+            </h4>
+            <div className="chart-container">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={redditChartData}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="rgba(255,255,255,0.1)"
+                  />
+                  <XAxis
+                    dataKey="name"
+                    stroke="#a0a0a0"
+                    fontSize={12}
+                    angle={-45}
+                    textAnchor="end"
+                    height={80}
+                  />
+                  <YAxis stroke="#a0a0a0" fontSize={12} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "rgba(0,0,0,0.8)",
+                      border: "1px solid rgba(255,255,255,0.2)",
+                      borderRadius: "8px",
+                      color: "#ffffff",
+                    }}
+                  />
+                  <Bar dataKey="upvotes" fill="#ff6b6b" name="Upvotes" />
+                  <Bar dataKey="comments" fill="#ffc107" name="Comments" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {/* Language Distribution (GitHub only) */}
         {languageData.length > 0 && (
           <div>
             <h4
@@ -243,7 +327,7 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
                     {languageData.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
+                        fill={PIE_COLORS[index % PIE_COLORS.length]}
                       />
                     ))}
                   </Pie>
@@ -265,7 +349,7 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
           </div>
         )}
 
-        {/* API Status Footer */}
+        {/* Multi-Platform API Status Footer */}
         <div
           style={{
             marginTop: "1.5rem",
@@ -281,14 +365,19 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
+              flexWrap: "wrap",
+              gap: "1rem",
             }}
           >
             <span>
               GitHub API: {data.platforms?.github?.status || "unknown"}
+              {data.platforms?.github?.rate_limit_remaining &&
+                ` (${data.platforms.github.rate_limit_remaining} calls remaining)`}
             </span>
             <span>
-              {data.platforms?.github?.rate_limit_remaining &&
-                `${data.platforms.github.rate_limit_remaining} calls remaining`}
+              Reddit API: {data.platforms?.reddit?.status || "unknown"}
+              {data.platforms?.reddit?.subreddits_monitored &&
+                ` (${data.platforms.reddit.subreddits_monitored} subreddits)`}
             </span>
           </div>
         </div>

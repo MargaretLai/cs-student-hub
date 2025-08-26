@@ -3,7 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .api_clients import github_client
+from .api_clients import github_client, reddit_client
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,8 @@ def homepage(request):
                 "trending": "/api/trending/",
                 "github_repos": "/api/github/repos/",
                 "github_languages": "/api/github/languages/",
+                "reddit_posts": "/api/reddit/posts/",
+                "reddit_subreddits": "/api/reddit/subreddits/",
             },
             "frontend_url": "http://localhost:3000",
             "status": "running",
@@ -33,9 +35,10 @@ def homepage(request):
 @api_view(["GET"])
 def api_status(request):
     """
-    API status endpoint with GitHub API status
+    API status endpoint with GitHub and Reddit API status
     """
     github_status = github_client.get_api_status()
+    reddit_status = reddit_client.get_api_status()
 
     return Response(
         {
@@ -44,11 +47,15 @@ def api_status(request):
             "version": "1.0.0",
             "features": [
                 "Real-time GitHub trending repositories",
+                "Reddit programming community posts",
                 "Programming language statistics",
                 "WebSocket support for live updates",
                 "Multi-platform data aggregation",
             ],
-            "github_api": github_status,
+            "apis": {
+                "github": github_status,
+                "reddit": reddit_status,
+            },
         }
     )
 
@@ -56,24 +63,39 @@ def api_status(request):
 @api_view(["GET"])
 def trending_topics(request):
     """
-    Get trending topics from GitHub repositories
+    Get trending topics from GitHub repositories and Reddit posts
     """
     try:
         # Get trending repositories (last 7 days)
         trending_repos = github_client.get_trending_repositories(days=7, limit=20)
+
+        # Try to get Reddit posts, but don't fail if Reddit is down
+        reddit_posts = []
+        reddit_error = None
+        try:
+            reddit_posts = reddit_client.get_programming_trending()
+            logger.info(f"Successfully fetched {len(reddit_posts)} Reddit posts")
+        except Exception as e:
+            reddit_error = str(e)
+            logger.error(
+                f"Reddit API failed, continuing without Reddit data: {reddit_error}"
+            )
 
         # Get language statistics
         language_stats = github_client.get_language_stats()
 
         # Transform trending repos into trending topics format
         trending_topics = []
-        for repo in trending_repos[:10]:  # Top 10 for trending topics
+
+        # Add GitHub repos (first 12 or all if Reddit failed)
+        github_limit = 8 if reddit_posts else 15
+        for repo in trending_repos[:github_limit]:
             trending_topics.append(
                 {
-                    "id": repo["id"],
+                    "id": f"github_{repo['id']}",
                     "keyword": repo["name"],
                     "platform": "GitHub",
-                    "trend_score": min(repo["stars"] / 10, 100),  # Scale stars to 0-100
+                    "trend_score": min(repo["stars"] / 10, 100),
                     "posts_count": repo["forks"],
                     "description": (
                         repo["description"][:100] + "..."
@@ -83,10 +105,45 @@ def trending_topics(request):
                     "language": repo["language"],
                     "url": repo["url"],
                     "stars": repo["stars"],
+                    "type": "repository",
                 }
             )
 
-        # Platform status
+        # Add Reddit posts if available
+        for post in reddit_posts[:7]:
+            trending_topics.append(
+                {
+                    "id": f"reddit_{post['id']}",
+                    "keyword": (
+                        post["title"][:50] + "..."
+                        if len(post["title"]) > 50
+                        else post["title"]
+                    ),
+                    "platform": "Reddit",
+                    "trend_score": min(post["score"] / 5, 100),
+                    "posts_count": post["num_comments"],
+                    "description": post.get(
+                        "selftext", f"Discussion in r/{post['subreddit']}"
+                    ),
+                    "language": post.get("flair_text", "Discussion"),
+                    "url": post["url"],
+                    "score": post["score"],
+                    "subreddit": post["subreddit"],
+                    "type": "discussion",
+                }
+            )
+
+        # Platform status with more detailed Reddit status
+        reddit_status = {
+            "status": "connected" if reddit_posts and not reddit_error else "error",
+            "last_fetch": "just now" if reddit_posts else "failed",
+            "posts_count": len(reddit_posts),
+            "subreddits_monitored": 7 if reddit_posts else 0,
+        }
+
+        if reddit_error:
+            reddit_status["error"] = reddit_error[:100]
+
         platforms = {
             "github": {
                 "status": "connected",
@@ -96,11 +153,7 @@ def trending_topics(request):
                     "remaining"
                 ],
             },
-            "reddit": {
-                "status": "pending",
-                "last_fetch": "not implemented",
-                "posts_count": 0,
-            },
+            "reddit": reddit_status,
             "stackoverflow": {
                 "status": "pending",
                 "last_fetch": "not implemented",
@@ -119,7 +172,11 @@ def trending_topics(request):
                 "platforms": platforms,
                 "language_stats": language_stats,
                 "total_repos_analyzed": len(trending_repos),
+                "total_posts_analyzed": len(reddit_posts),
                 "last_updated": "just now",
+                "reddit_note": (
+                    "Reddit API can be inconsistent" if reddit_error else None
+                ),
             }
         )
 
@@ -135,10 +192,15 @@ def trending_topics(request):
                         "status": "error",
                         "last_fetch": "failed",
                         "error": str(e),
-                    }
+                    },
+                    "reddit": {
+                        "status": "error",
+                        "last_fetch": "failed",
+                        "error": "Failed due to GitHub error",
+                    },
                 },
                 "error": "Failed to fetch trending data",
-                "message": "API is running but GitHub data fetch failed",
+                "message": "API is running but data fetch failed",
             }
         )
 
@@ -197,5 +259,63 @@ def github_languages(request):
         logger.error(f"Error fetching language stats: {str(e)}")
         return Response(
             {"error": "Failed to fetch language statistics", "message": str(e)},
+            status=500,
+        )
+
+
+@api_view(["GET"])
+def reddit_posts(request):
+    """
+    Get trending posts from Reddit programming communities
+    """
+    try:
+        subreddit = request.GET.get("subreddit", "programming")
+        sort = request.GET.get("sort", "hot")
+        limit = int(request.GET.get("limit", 25))
+
+        posts = reddit_client.get_subreddit_posts(
+            subreddit=subreddit, sort=sort, limit=limit
+        )
+
+        return Response(
+            {
+                "posts": posts,
+                "count": len(posts),
+                "filters": {
+                    "subreddit": subreddit,
+                    "sort": sort,
+                    "limit": limit,
+                },
+                "reddit_api_status": reddit_client.get_api_status(),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error fetching Reddit posts: {str(e)}")
+        return Response(
+            {"error": "Failed to fetch Reddit posts", "message": str(e)}, status=500
+        )
+
+
+@api_view(["GET"])
+def reddit_subreddits(request):
+    """
+    Get statistics for popular programming subreddits
+    """
+    try:
+        subreddit_stats = reddit_client.get_subreddit_stats()
+
+        return Response(
+            {
+                "subreddit_stats": subreddit_stats,
+                "total_subreddits": len(subreddit_stats),
+                "reddit_api_status": reddit_client.get_api_status(),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error fetching subreddit stats: {str(e)}")
+        return Response(
+            {"error": "Failed to fetch subreddit statistics", "message": str(e)},
             status=500,
         )
