@@ -7,6 +7,7 @@ import {
   ArrowUp,
   Github,
   MessageSquare,
+  Newspaper,
 } from "lucide-react";
 
 interface TrendingTopic {
@@ -19,9 +20,10 @@ interface TrendingTopic {
   language?: string;
   url?: string;
   stars?: number;
-  score?: number; // Reddit score
+  score?: number; // Reddit/HN score
   subreddit?: string; // Reddit subreddit
-  type?: string; // 'repository' or 'discussion'
+  author?: string; // Hacker News author
+  type?: string; // 'repository', 'discussion', 'news'
 }
 
 interface TrendingTopicsProps {
@@ -61,16 +63,32 @@ const TrendingTopics: React.FC<TrendingTopicsProps> = ({
             <div className="loading">Loading Reddit discussions...</div>
           </div>
         </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">
+              <Newspaper className="card-icon" />
+              Hacker News Stories
+            </div>
+            <div className="trend-count">Loading...</div>
+          </div>
+          <div className="card-content">
+            <div className="loading">Loading Hacker News stories...</div>
+          </div>
+        </div>
       </>
     );
   }
 
-  // Separate GitHub and Reddit content
+  // Separate content by platform
   const githubRepos = trendingData.filter(
     (topic) => topic.platform === "GitHub" || topic.type === "repository"
   );
   const redditPosts = trendingData.filter(
     (topic) => topic.platform === "Reddit" || topic.type === "discussion"
+  );
+  const hackernewsStories = trendingData.filter(
+    (topic) => topic.platform === "Hacker News" || topic.type === "news"
   );
 
   return (
@@ -241,6 +259,97 @@ const TrendingTopics: React.FC<TrendingTopicsProps> = ({
                   <strong>Total Comments:</strong>{" "}
                   {redditPosts
                     .reduce((sum, post) => sum + (post.posts_count || 0), 0)
+                    .toLocaleString()}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Hacker News Stories Card */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">
+            <Newspaper className="card-icon" />
+            Hacker News Stories
+          </div>
+          <div className="trend-count hackernews-count">
+            {hackernewsStories.length}
+          </div>
+        </div>
+        <div className="card-content">
+          {hackernewsStories.length > 0 ? (
+            <div className="trending-list">
+              {hackernewsStories.slice(0, 8).map((story, index) => (
+                <div key={story.id} className="trending-item hackernews-item">
+                  <div className="trending-rank hackernews-rank">
+                    #{index + 1}
+                  </div>
+                  <div className="trending-info">
+                    <div className="trending-header">
+                      <div className="trending-name">{story.keyword}</div>
+                      <div className="trending-stats">
+                        <span className="stat hackernews-stat">
+                          <ArrowUp size={12} />
+                          {(story.score || 0).toLocaleString()}
+                        </span>
+                        <span className="stat hackernews-stat">
+                          <MessageCircle size={12} />
+                          {(story.posts_count || 0).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="trending-meta">
+                      <span className="trending-author">
+                        by {story.author || "unknown"}
+                      </span>
+                      <span className="trending-score">
+                        {Math.round(story.trend_score)}
+                      </span>
+                    </div>
+
+                    <div className="trending-description">
+                      {story.description}
+                    </div>
+
+                    {story.url && (
+                      <a
+                        href={story.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="trending-link hackernews-link"
+                      >
+                        <ExternalLink size={12} />
+                        Read Story
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="no-data hackernews-no-data">
+              <p>No Hacker News stories available</p>
+              <small>Hacker News API may be experiencing issues</small>
+            </div>
+          )}
+
+          {/* Hacker News Summary */}
+          {hackernewsStories.length > 0 && (
+            <div className="platform-summary hackernews-summary">
+              <div className="summary-row">
+                <span>
+                  <strong>Total Points:</strong>{" "}
+                  {hackernewsStories
+                    .reduce((sum, story) => sum + (story.score || 0), 0)
+                    .toLocaleString()}
+                </span>
+                <span>
+                  <strong>Total Comments:</strong>{" "}
+                  {hackernewsStories
+                    .reduce((sum, story) => sum + (story.posts_count || 0), 0)
                     .toLocaleString()}
                 </span>
               </div>

@@ -14,9 +14,10 @@ interface TrendingTopic {
   language?: string;
   url?: string;
   stars?: number;
-  score?: number; // Reddit score
+  score?: number; // Reddit/HN score
   subreddit?: string; // Reddit subreddit
-  type?: string; // 'repository' or 'discussion'
+  author?: string; // Hacker News author
+  type?: string; // 'repository', 'discussion', 'news'
 }
 
 interface DashboardProps {
@@ -29,7 +30,6 @@ interface PlatformStatus {
   last_fetch: string;
   repos_count?: number;
   posts_count?: number;
-  questions_count?: number;
   stories_count?: number;
   rate_limit_remaining?: number;
   subreddits_monitored?: number;
@@ -41,12 +41,12 @@ interface TrendingData {
   platforms: {
     github: PlatformStatus;
     reddit: PlatformStatus;
-    stackoverflow: PlatformStatus;
     hackernews: PlatformStatus;
   };
   language_stats?: any;
   total_repos_analyzed?: number;
   total_posts_analyzed?: number;
+  total_stories_analyzed?: number;
   last_updated?: string;
   error?: string;
   message?: string;
@@ -71,6 +71,10 @@ interface ApiStatus {
       status: string;
       message: string;
       note?: string;
+    };
+    hackernews: {
+      status: string;
+      message: string;
     };
   };
 }
@@ -227,6 +231,26 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </p>
                   </div>
                 )}
+
+                {/* Hacker News API Status */}
+                {apiStatus?.apis?.hackernews && (
+                  <div
+                    style={{
+                      marginTop: "1rem",
+                      padding: "1rem",
+                      background: "rgba(255,255,255,0.05)",
+                      borderRadius: "8px",
+                    }}
+                  >
+                    <p>
+                      <strong>Hacker News API:</strong>{" "}
+                      {apiStatus.apis.hackernews.status}
+                    </p>
+                    <p style={{ fontSize: "0.9rem", color: "#a0a0a0" }}>
+                      {apiStatus.apis.hackernews.message}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="features-list" style={{ marginTop: "1rem" }}>
@@ -250,7 +274,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       {/* Live Stats */}
       <LiveStats data={trendingData} isLoading={isLoading} />
 
-      {/* Trending Topics - Now supports both GitHub and Reddit */}
+      {/* Trending Topics - Now supports GitHub, Reddit, and Hacker News */}
       {trendingData && (
         <TrendingTopics
           trendingData={trendingData.trending_topics || []}
@@ -289,8 +313,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                     >
                       {status.repos_count && `${status.repos_count} repos`}
                       {status.posts_count && `${status.posts_count} posts`}
-                      {status.questions_count &&
-                        `${status.questions_count} questions`}
                       {status.stories_count &&
                         `${status.stories_count} stories`}
                       {status.subreddits_monitored &&
@@ -317,7 +339,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Updated Analytics Summary */}
       {(trendingData?.total_repos_analyzed ||
-        trendingData?.total_posts_analyzed) && (
+        trendingData?.total_posts_analyzed ||
+        trendingData?.total_stories_analyzed) && (
         <div className="card">
           <div className="card-header">
             <div className="card-title">
@@ -341,11 +364,9 @@ const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="stat-card">
                 <div className="stat-value">
-                  {trendingData.language_stats
-                    ? Object.keys(trendingData.language_stats).length
-                    : 0}
+                  {trendingData.total_stories_analyzed || 0}
                 </div>
-                <div className="stat-label">Languages</div>
+                <div className="stat-label">HN Stories</div>
               </div>
               <div className="stat-card">
                 <div className="stat-value">

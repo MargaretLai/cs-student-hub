@@ -11,7 +11,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { TrendingUp, Users, Code, Star } from "lucide-react";
+import { TrendingUp, Users, Code, Star, Newspaper } from "lucide-react";
 
 interface TrendingTopic {
   id: string | number;
@@ -23,9 +23,10 @@ interface TrendingTopic {
   language?: string;
   url?: string;
   stars?: number;
-  score?: number; // Reddit score
+  score?: number; // Reddit/HN score
   subreddit?: string; // Reddit subreddit
-  type?: string; // 'repository' or 'discussion'
+  author?: string; // Hacker News author
+  type?: string; // 'repository', 'discussion', 'news'
 }
 
 interface PlatformStatus {
@@ -33,7 +34,6 @@ interface PlatformStatus {
   last_fetch: string;
   repos_count?: number;
   posts_count?: number;
-  questions_count?: number;
   stories_count?: number;
   rate_limit_remaining?: number;
   subreddits_monitored?: number;
@@ -45,12 +45,12 @@ interface TrendingData {
   platforms: {
     github: PlatformStatus;
     reddit: PlatformStatus;
-    stackoverflow: PlatformStatus;
     hackernews: PlatformStatus;
   };
   language_stats?: any;
   total_repos_analyzed?: number;
   total_posts_analyzed?: number;
+  total_stories_analyzed?: number;
   last_updated?: string;
   error?: string;
   message?: string;
@@ -68,7 +68,7 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
         <div className="card-header">
           <div className="card-title">
             <TrendingUp className="card-icon" />
-            Live Statistics
+            Multi-Platform Statistics
           </div>
         </div>
         <div className="card-content">
@@ -84,7 +84,7 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
         <div className="card-header">
           <div className="card-title">
             <TrendingUp className="card-icon" />
-            Live Statistics
+            Multi-Platform Statistics
           </div>
         </div>
         <div className="card-content">
@@ -94,7 +94,7 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
     );
   }
 
-  // Separate GitHub and Reddit data for different visualizations
+  // Separate data by platform for visualizations
   const githubRepos =
     data.trending_topics?.filter(
       (topic) => topic.platform === "GitHub" || topic.type === "repository"
@@ -103,6 +103,11 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
   const redditPosts =
     data.trending_topics?.filter(
       (topic) => topic.platform === "Reddit" || topic.type === "discussion"
+    ) || [];
+
+  const hackernewsStories =
+    data.trending_topics?.filter(
+      (topic) => topic.platform === "Hacker News" || topic.type === "news"
     ) || [];
 
   // Prepare chart data from GitHub repositories (stars vs forks)
@@ -139,8 +144,6 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
     : [];
 
   // Colors for the charts
-  const GITHUB_COLORS = ["#667eea", "#00ff88"];
-  const REDDIT_COLORS = ["#ff6b6b", "#ffc107"];
   const PIE_COLORS = [
     "#667eea",
     "#00ff88",
@@ -163,7 +166,15 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
     (sum, topic) => sum + (topic.score || 0),
     0
   );
-  const totalComments = redditPosts.reduce(
+  const totalRedditComments = redditPosts.reduce(
+    (sum, topic) => sum + (topic.posts_count || 0),
+    0
+  );
+  const totalHNPoints = hackernewsStories.reduce(
+    (sum, topic) => sum + (topic.score || 0),
+    0
+  );
+  const totalHNComments = hackernewsStories.reduce(
     (sum, topic) => sum + (topic.posts_count || 0),
     0
   );
@@ -189,12 +200,12 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
             <div className="stat-label">Reddit Posts</div>
           </div>
           <div className="stat-card">
-            <div className="stat-value">{totalStars.toLocaleString()}</div>
-            <div className="stat-label">Total Stars</div>
+            <div className="stat-value">{data.total_stories_analyzed || 0}</div>
+            <div className="stat-label">HN Stories</div>
           </div>
           <div className="stat-card">
-            <div className="stat-value">{totalUpvotes.toLocaleString()}</div>
-            <div className="stat-label">Total Upvotes</div>
+            <div className="stat-value">{totalStars.toLocaleString()}</div>
+            <div className="stat-label">Total Stars</div>
           </div>
         </div>
 
@@ -369,16 +380,21 @@ const LiveStats: React.FC<LiveStatsProps> = ({ data, isLoading }) => {
               gap: "1rem",
             }}
           >
-            <span>
+            <div>
               GitHub API: {data.platforms?.github?.status || "unknown"}
               {data.platforms?.github?.rate_limit_remaining &&
-                ` (${data.platforms.github.rate_limit_remaining} calls remaining)`}
-            </span>
-            <span>
+                ` (${data.platforms.github.rate_limit_remaining} calls left)`}
+            </div>
+            <div>
               Reddit API: {data.platforms?.reddit?.status || "unknown"}
               {data.platforms?.reddit?.subreddits_monitored &&
                 ` (${data.platforms.reddit.subreddits_monitored} subreddits)`}
-            </span>
+            </div>
+            <div>
+              Hacker News: {data.platforms?.hackernews?.status || "unknown"}
+              {data.platforms?.hackernews?.stories_count &&
+                ` (${data.platforms.hackernews.stories_count} stories)`}
+            </div>
           </div>
         </div>
       </div>

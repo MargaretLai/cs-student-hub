@@ -362,6 +362,97 @@ class RedditAPIClient:
             }
 
 
-# Initialize API clients
+class HackerNewsAPIClient:
+    """
+    Hacker News API client for fetching top stories and trending tech news
+    """
+
+    def __init__(self):
+        self.base_url = "https://hacker-news.firebaseio.com/v0"
+        self.headers = {
+            "User-Agent": "python:cs-student-hub:v1.0.0 (by /u/csstudent)",
+            "Accept": "application/json",
+        }
+
+    def _make_request(self, endpoint: str) -> Optional[Dict]:
+        """
+        Make request to Hacker News API with error handling
+        """
+        try:
+            url = f"{self.base_url}/{endpoint}"
+
+            response = requests.get(url, headers=self.headers, timeout=10)
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(
+                    f"Hacker News API error {response.status_code}: {response.text[:100]}"
+                )
+                return None
+
+        except requests.RequestException as e:
+            logger.error(f"Hacker News API request failed: {str(e)}")
+            return None
+
+    def get_story_details(self, story_id: int) -> Optional[Dict]:
+        """
+        Get details for a specific story
+        """
+        data = self._make_request(f"item/{story_id}.json")
+        if not data:
+            return None
+
+        return {
+            "id": data.get("id"),
+            "title": data.get("title", "No title"),
+            "url": data.get("url", ""),
+            "score": data.get("score", 0),
+            "by": data.get("by", "unknown"),
+            "time": data.get("time", 0),
+            "descendants": data.get("descendants", 0),  # comment count
+            "type": data.get("type", "story"),
+        }
+
+    def get_top_stories(self, limit: int = 30) -> List[Dict]:
+        """
+        Get top stories from Hacker News
+        """
+        # Get list of top story IDs
+        story_ids = self._make_request("topstories.json")
+        if not story_ids:
+            return []
+
+        stories = []
+        # Get details for first N stories
+        for story_id in story_ids[:limit]:
+            story = self.get_story_details(story_id)
+            if (
+                story and story["title"] and story["score"] >= 10
+            ):  # Filter quality stories
+                stories.append(story)
+
+        logger.info(f"Successfully fetched {len(stories)} Hacker News stories")
+        return stories
+
+    def get_api_status(self) -> Dict:
+        """
+        Check Hacker News API status
+        """
+        try:
+            data = self._make_request("topstories.json")
+            if data and len(data) > 0:
+                return {
+                    "status": "connected",
+                    "message": "Connected to Hacker News API",
+                }
+            else:
+                return {"status": "error", "message": "No data from Hacker News API"}
+        except Exception as e:
+            return {"status": "error", "message": f"Hacker News API failed: {str(e)}"}
+
+
+# Initialize all API clients
 github_client = GitHubAPIClient()
 reddit_client = RedditAPIClient()
+hackernews_client = HackerNewsAPIClient()

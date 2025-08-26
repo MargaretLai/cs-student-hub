@@ -11,4 +11,6 @@ urlpatterns = [
     # Reddit endpoints
     path("reddit/posts/", views.reddit_posts, name="reddit_posts"),
     path("reddit/subreddits/", views.reddit_subreddits, name="reddit_subreddits"),
+    # Hacker News endpoints
+    path("hackernews/stories/", views.hackernews_stories, name="hackernews_stories"),
 ]

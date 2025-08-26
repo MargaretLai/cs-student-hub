@@ -608,3 +608,51 @@ body {
     grid-template-columns: 1fr;
   }
 }
+/* === HACKER NEWS STYLING === */
+.hackernews-item {
+  border-left: 3px solid #ff9500;
+}
+
+.hackernews-item:hover {
+  background: rgba(255, 149, 0, 0.1);
+  border-color: rgba(255, 149, 0, 0.3);
+}
+
+.hackernews-rank {
+  background: rgba(255, 149, 0, 0.2);
+  color: #ff9500;
+}
+
+.hackernews-count {
+  background: rgba(255, 149, 0, 0.2);
+  color: #ff9500;
+}
+
+.hackernews-stat {
+  color: #ff9500;
+}
+
+.trending-author {
+  background: rgba(255, 149, 0, 0.2);
+  color: #ff9500;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.hackernews-link {
+  color: #ff9500;
+}
+
+.hackernews-link:hover {
+  color: #ff7b00;
+}
+
+.hackernews-summary {
+  border-top: 2px solid rgba(255, 149, 0, 0.2);
+}
+
+.hackernews-no-data {
+  border: 1px dashed rgba(255, 149, 0, 0.2);
+}

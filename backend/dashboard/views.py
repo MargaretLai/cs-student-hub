@@ -3,7 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .api_clients import github_client, reddit_client
+from .api_clients import github_client, reddit_client, hackernews_client
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ def homepage(request):
                 "github_languages": "/api/github/languages/",
                 "reddit_posts": "/api/reddit/posts/",
                 "reddit_subreddits": "/api/reddit/subreddits/",
+                "hackernews_stories": "/api/hackernews/stories/",
             },
             "frontend_url": "http://localhost:3000",
             "status": "running",
@@ -35,10 +36,11 @@ def homepage(request):
 @api_view(["GET"])
 def api_status(request):
     """
-    API status endpoint with GitHub and Reddit API status
+    API status endpoint with GitHub, Reddit, and Hacker News API status
     """
     github_status = github_client.get_api_status()
     reddit_status = reddit_client.get_api_status()
+    hackernews_status = hackernews_client.get_api_status()
 
     return Response(
         {
@@ -48,13 +50,14 @@ def api_status(request):
             "features": [
                 "Real-time GitHub trending repositories",
                 "Reddit programming community posts",
+                "Hacker News top stories and tech trends",
                 "Programming language statistics",
-                "WebSocket support for live updates",
                 "Multi-platform data aggregation",
             ],
             "apis": {
                 "github": github_status,
                 "reddit": reddit_status,
+                "hackernews": hackernews_status,
             },
         }
     )
@@ -63,7 +66,7 @@ def api_status(request):
 @api_view(["GET"])
 def trending_topics(request):
     """
-    Get trending topics from GitHub repositories and Reddit posts
+    Get trending topics from GitHub repositories, Reddit posts, and Hacker News stories
     """
     try:
         # Get trending repositories (last 7 days)
@@ -81,14 +84,32 @@ def trending_topics(request):
                 f"Reddit API failed, continuing without Reddit data: {reddit_error}"
             )
 
+        # Try to get Hacker News stories
+        hackernews_stories = []
+        hackernews_error = None
+        try:
+            hackernews_stories = hackernews_client.get_top_stories(limit=15)
+            logger.info(
+                f"Successfully fetched {len(hackernews_stories)} Hacker News stories"
+            )
+        except Exception as e:
+            hackernews_error = str(e)
+            logger.error(
+                f"Hacker News API failed, continuing without HN data: {hackernews_error}"
+            )
+
         # Get language statistics
         language_stats = github_client.get_language_stats()
 
         # Transform trending repos into trending topics format
         trending_topics = []
 
-        # Add GitHub repos (first 12 or all if Reddit failed)
-        github_limit = 8 if reddit_posts else 15
+        # Add GitHub repos (adjust limit based on what other APIs returned)
+        github_limit = (
+            6
+            if (reddit_posts and hackernews_stories)
+            else 8 if (reddit_posts or hackernews_stories) else 15
+        )
         for repo in trending_repos[:github_limit]:
             trending_topics.append(
                 {
@@ -110,7 +131,8 @@ def trending_topics(request):
             )
 
         # Add Reddit posts if available
-        for post in reddit_posts[:7]:
+        reddit_limit = 5 if hackernews_stories else 7
+        for post in reddit_posts[:reddit_limit]:
             trending_topics.append(
                 {
                     "id": f"reddit_{post['id']}",
@@ -133,16 +155,53 @@ def trending_topics(request):
                 }
             )
 
-        # Platform status with more detailed Reddit status
+        # Add Hacker News stories if available
+        for story in hackernews_stories[:4]:
+            trending_topics.append(
+                {
+                    "id": f"hackernews_{story['id']}",
+                    "keyword": (
+                        story["title"][:50] + "..."
+                        if len(story["title"]) > 50
+                        else story["title"]
+                    ),
+                    "platform": "Hacker News",
+                    "trend_score": min(
+                        story["score"] / 3, 100
+                    ),  # HN scores are generally lower
+                    "posts_count": story["descendants"],
+                    "description": f"Tech news story by {story['by']}",
+                    "language": "Tech News",
+                    "url": (
+                        story["url"]
+                        if story["url"]
+                        else f"https://news.ycombinator.com/item?id={story['id']}"
+                    ),
+                    "score": story["score"],
+                    "author": story["by"],
+                    "type": "news",
+                }
+            )
+
+        # Platform status with detailed status for all platforms
         reddit_status = {
             "status": "connected" if reddit_posts and not reddit_error else "error",
             "last_fetch": "just now" if reddit_posts else "failed",
             "posts_count": len(reddit_posts),
             "subreddits_monitored": 7 if reddit_posts else 0,
         }
-
         if reddit_error:
             reddit_status["error"] = reddit_error[:100]
+
+        hackernews_status = {
+            "status": (
+                "connected" if hackernews_stories and not hackernews_error else "error"
+            ),
+            "last_fetch": "just now" if hackernews_stories else "failed",
+            "stories_count": len(hackernews_stories),
+        }
+        if hackernews_error:
+            hackernews_status["error"] = hackernews_error[:100]
 
         platforms = {
             "github": {
@@ -154,16 +213,7 @@ def trending_topics(request):
                 ],
             },
             "reddit": reddit_status,
-            "stackoverflow": {
-                "status": "pending",
-                "last_fetch": "not implemented",
-                "questions_count": 0,
-            },
-            "hackernews": {
-                "status": "pending",
-                "last_fetch": "not implemented",
-                "stories_count": 0,
-            },
+            "hackernews": hackernews_status,
         }
 
         return Response(
@@ -173,10 +223,18 @@ def trending_topics(request):
                 "language_stats": language_stats,
                 "total_repos_analyzed": len(trending_repos),
                 "total_posts_analyzed": len(reddit_posts),
+                "total_stories_analyzed": len(hackernews_stories),
                 "last_updated": "just now",
-                "reddit_note": (
-                    "Reddit API can be inconsistent" if reddit_error else None
-                ),
+                "api_notes": {
+                    "reddit": (
+                        "Reddit API can be inconsistent" if reddit_error else None
+                    ),
+                    "hackernews": (
+                        "Hacker News API is generally reliable"
+                        if hackernews_error
+                        else None
+                    ),
+                },
             }
         )
 
@@ -194,6 +252,11 @@ def trending_topics(request):
                         "error": str(e),
                     },
                     "reddit": {
+                        "status": "error",
+                        "last_fetch": "failed",
+                        "error": "Failed due to GitHub error",
+                    },
+                    "hackernews": {
                         "status": "error",
                         "last_fetch": "failed",
                         "error": "Failed due to GitHub error",
@@ -317,5 +380,34 @@ def reddit_subreddits(request):
         logger.error(f"Error fetching subreddit stats: {str(e)}")
         return Response(
             {"error": "Failed to fetch subreddit statistics", "message": str(e)},
+            status=500,
+        )
+
+
+@api_view(["GET"])
+def hackernews_stories(request):
+    """
+    Get top stories from Hacker News
+    """
+    try:
+        limit = int(request.GET.get("limit", 30))
+
+        stories = hackernews_client.get_top_stories(limit=limit)
+
+        return Response(
+            {
+                "stories": stories,
+                "count": len(stories),
+                "filters": {
+                    "limit": limit,
+                },
+                "hackernews_api_status": hackernews_client.get_api_status(),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error fetching Hacker News stories: {str(e)}")
+        return Response(
+            {"error": "Failed to fetch Hacker News stories", "message": str(e)},
             status=500,
         )
