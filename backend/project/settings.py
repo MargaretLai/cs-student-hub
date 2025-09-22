@@ -13,10 +13,20 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 from pathlib import Path
 from decouple import config
 import os
+from .environments import (
+    get_database_config,
+    get_cors_settings,
+    get_allowed_hosts,
+    get_security_settings,
+    get_redis_config,
+    get_logging_config,
+    is_production,
+    is_development,
+    get_environment,
+)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -26,14 +36,24 @@ SECRET_KEY = config(
     "SECRET_KEY", default="django-insecure-your-secret-key-change-this-in-production"
 )
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config("DEBUG", default=True, cast=bool)
+# Environment-based settings
+security_settings = get_security_settings()
+DEBUG = security_settings["DEBUG"]
+ALLOWED_HOSTS = get_allowed_hosts()
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0"]
-
+# Security settings for production
+if is_production():
+    SECURE_SSL_REDIRECT = security_settings["SECURE_SSL_REDIRECT"]
+    SECURE_HSTS_SECONDS = security_settings["SECURE_HSTS_SECONDS"]
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = security_settings["SECURE_HSTS_INCLUDE_SUBDOMAINS"]
+    SECURE_HSTS_PRELOAD = security_settings["SECURE_HSTS_PRELOAD"]
+    SECURE_CONTENT_TYPE_NOSNIFF = security_settings["SECURE_CONTENT_TYPE_NOSNIFF"]
+    SECURE_BROWSER_XSS_FILTER = security_settings["SECURE_BROWSER_XSS_FILTER"]
+    SESSION_COOKIE_SECURE = security_settings["SESSION_COOKIE_SECURE"]
+    CSRF_COOKIE_SECURE = security_settings["CSRF_COOKIE_SECURE"]
+    X_FRAME_OPTIONS = security_settings["X_FRAME_OPTIONS"]
 
 # Application definition
-
 INSTALLED_APPS = [
     "daphne",  # WebSocket support - must be first
     "django.contrib.admin",
@@ -53,6 +73,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # Static files for production
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -66,7 +87,10 @@ ROOT_URLCONF = "project.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [
+            BASE_DIR / "templates",  # For custom templates
+            BASE_DIR.parent / "frontend" / "build",  # React build files
+        ],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -83,30 +107,16 @@ TEMPLATES = [
 WSGI_APPLICATION = "project.wsgi.application"
 ASGI_APPLICATION = "project.asgi.application"
 
-# WebSocket channel layers
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
-        },
-    },
-}
+# Database configuration
+DATABASES = {"default": get_database_config()}
 
-# Database
-# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
-}
-
+# Redis and Channel Layers configuration
+redis_config = get_redis_config()
+CELERY_BROKER_URL = redis_config["BROKER_URL"]
+CELERY_RESULT_BACKEND = redis_config["RESULT_BACKEND"]
+CHANNEL_LAYERS = redis_config["CHANNEL_LAYERS"]
 
 # Password validation
-# https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
-
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
@@ -122,37 +132,50 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
-# https://docs.djangoproject.com/en/4.2/topics/i18n/
-
 LANGUAGE_CODE = "en-us"
-
 TIME_ZONE = "UTC"
-
 USE_I18N = True
-
 USE_TZ = True
 
-
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/4.2/howto/static-files/
-
 STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
-# Default primary key field type
-# https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
-
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-# CORS settings - allows React frontend to connect
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # React default port
-    "http://127.0.0.1:3000",
+# Additional static files directories
+STATICFILES_DIRS = [
+    BASE_DIR / "static",  # Your custom static files
 ]
 
-CORS_ALLOW_CREDENTIALS = True
+# Static files storage for production
+if is_production():
+    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+# Media files (user uploads)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
+# Default primary key field type
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# CORS settings - environment based
+cors_settings = get_cors_settings()
+CORS_ALLOWED_ORIGINS = cors_settings["ALLOWED_ORIGINS"]
+CORS_ALLOW_CREDENTIALS = cors_settings["ALLOW_CREDENTIALS"]
+
+# Additional CORS settings for API
+CORS_ALLOW_ALL_ORIGINS = is_development()  # Only allow all origins in development
+CORS_ALLOWED_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
 
 # Django REST Framework settings
 REST_FRAMEWORK = {
@@ -162,15 +185,34 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 100,
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {"anon": "1000/hour", "user": "2000/hour"},
 }
 
 # Celery settings for background tasks
-CELERY_BROKER_URL = "redis://localhost:6379"
-CELERY_RESULT_BACKEND = "redis://localhost:6379"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    "refresh-github-data": {
+        "task": "dashboard.tasks.refresh_github_data",
+        "schedule": 3600.0,  # Every hour
+    },
+    "refresh-reddit-data": {
+        "task": "dashboard.tasks.refresh_reddit_data",
+        "schedule": 3600.0,  # Every hour
+    },
+    "refresh-hackernews-data": {
+        "task": "dashboard.tasks.refresh_hackernews_data",
+        "schedule": 3600.0,  # Every hour
+    },
+}
 
 # API Configuration - External APIs
 GITHUB_TOKEN = config("GITHUB_TOKEN", default="")
@@ -178,24 +220,63 @@ REDDIT_CLIENT_ID = config("REDDIT_CLIENT_ID", default="")
 REDDIT_CLIENT_SECRET = config("REDDIT_CLIENT_SECRET", default="")
 REDDIT_USER_AGENT = config("REDDIT_USER_AGENT", default="cs-student-hub/1.0")
 
+# Cache configuration
+if is_production():
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": config("REDIS_URL", default="redis://localhost:6379/1"),
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            },
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "cs-student-hub-cache",
+        }
+    }
+
+# Session configuration
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "default"
+
 # Logging configuration
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": "INFO",
-    },
-    "loggers": {
-        "dashboard": {
-            "handlers": ["console"],
-            "level": "DEBUG",
-            "propagate": False,
-        },
-    },
-}
+LOGGING = get_logging_config()
+
+# Email configuration for production
+if is_production():
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = config("EMAIL_HOST", default="smtp.gmail.com")
+    EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
+    EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
+    EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
+    EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
+    DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@your-domain.com")
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# AWS Configuration (for production deployment)
+if is_production():
+    AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID", default="")
+    AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY", default="")
+    AWS_STORAGE_BUCKET_NAME = config("AWS_STORAGE_BUCKET_NAME", default="")
+    AWS_S3_REGION_NAME = config("AWS_S3_REGION_NAME", default="us-east-1")
+    AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
+    AWS_DEFAULT_ACL = "public-read"
+
+    # Use S3 for media files in production
+    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+
+# Health check endpoint
+HEALTH_CHECK_ENABLED = True
+
+# API versioning
+API_VERSION = "v1"
+
+# Application information
+APP_NAME = "CS Student Hub"
+APP_VERSION = "1.0.0"
+APP_DESCRIPTION = "Real-time dashboard for CS students with GitHub, Reddit, and Hacker News integration"
