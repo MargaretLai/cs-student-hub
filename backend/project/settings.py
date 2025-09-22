@@ -145,6 +145,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 # Additional static files directories
 STATICFILES_DIRS = [
     BASE_DIR / "static",  # Your custom static files
+    BASE_DIR.parent / "frontend" / "build" / "static",  # React build files
 ]
 
 # Static files storage for production
