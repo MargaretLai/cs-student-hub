@@ -96,13 +96,13 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       // Fetch API status
       const statusResponse = await axios.get(
-        "http://18.189.22.204:8000/api/status/"
+        "http://margaretlai-cs-student-hub.com:8000/api/status/"
       );
       setApiStatus(statusResponse.data);
 
       // Fetch trending data
       const trendingResponse = await axios.get(
-        "http://18.189.22.204:8000/api/trending/"
+        "http://margaretlai-cs-student-hub.com:8000/api/trending/"
       );
       setTrendingData(trendingResponse.data);
 
