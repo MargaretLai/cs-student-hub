@@ -1,57 +1,50 @@
 """
 URL configuration for project project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/4.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.http import JsonResponse
+from django.views.generic import TemplateView
+from django.conf import settings
+from django.conf.urls.static import static
 
 
-def homepage(request):
-    """Simple homepage showing the project is running"""
+def api_status(request):
+    """API status endpoint"""
     return JsonResponse(
         {
             "project": "CS Student Hub - Real-Time Tech Ecosystem Dashboard",
             "status": "Running Successfully! 🚀",
-            "description": "A real-time web application aggregating content from GitHub, Reddit, Stack Overflow, and Hacker News",
+            "description": "A real-time web application aggregating content from GitHub, Reddit, and Hacker News",
             "api_endpoints": {
                 "status": "/api/status/",
                 "trending": "/api/trending/",
                 "admin": "/admin/",
             },
-            "websocket": "ws://localhost:8000/ws/dashboard/",
+            "websocket": f"ws://{request.get_host()}/ws/dashboard/",
             "tech_stack": [
                 "Django + Django Channels",
                 "WebSocket for real-time updates",
                 "PostgreSQL + Redis",
-                "React frontend (coming next)",
+                "React frontend",
                 "Multiple API integrations",
-            ],
-            "next_steps": [
-                "Create React frontend",
-                "Integrate real APIs",
-                "Add WebSocket live updates",
-                "Deploy to AWS",
             ],
         }
     )
 
 
 urlpatterns = [
-    path("", homepage, name="homepage"),
     path("admin/", admin.site.urls),
     path("api/", include("dashboard.urls")),
+    path("api/status/", api_status, name="api_status"),
+    # Serve React static files in production
+    re_path(
+        r"^.*$", TemplateView.as_view(template_name="index.html"), name="react_app"
+    ),
 ]
+
+# Serve static files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
